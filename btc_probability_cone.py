@@ -1,7 +1,7 @@
 """
 BTC Probability Cone Projection
 --------------------------------
-Тянет дневные свечи BTC-USDT с KuCoin, считает GARCH(1,1) волатильность,
+Тянет дневные свечи BTC-USDT с KuCoin, считает EGARCH волатильность (с учётом асимметрии),
 HMM определяет текущий режим (дрифт), Monte Carlo с Student-t шоками (жирные хвосты)
 строит веер будущих цен -> перцентили 5/25/50/75/95 -> график-конус.
 
@@ -50,9 +50,9 @@ def fetch_kucoin_daily(symbol=SYMBOL, days=LOOKBACK_DAYS):
     return df.sort_values("time").reset_index(drop=True)
 
 
-# ---------------- 2. GARCH ВОЛАТИЛЬНОСТЬ ----------------
+# ---------------- 2. EGARCH ВОЛАТИЛЬНОСТЬ (асимметрия: падения пугают рынок сильнее роста) ----------------
 def fit_garch_vol(log_returns):
-    am = arch_model(log_returns * 100, vol="Garch", p=1, q=1, dist="normal")
+    am = arch_model(log_returns * 100, vol="EGARCH", p=1, o=1, q=1, dist="normal")
     res = am.fit(disp="off")
     forecast = res.forecast(horizon=1)
     sigma_today = np.sqrt(forecast.variance.values[-1, 0]) / 100
