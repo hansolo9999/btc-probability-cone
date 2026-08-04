@@ -31,12 +31,29 @@
   .card .value { font-size: 16px; font-weight: 600; margin-top: 2px; }
   .p-up { color: #f5a623; }
   .loading { color: #888; padding: 40px 0; text-align: center; }
+
+  .signal {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    transition: background 0.3s;
+  }
+  .signal.up   { background: rgba(46, 204, 113, 0.15); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.4); }
+  .signal.down { background: rgba(231, 76, 60, 0.15); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.4); }
+  .signal.flat { background: rgba(136, 136, 136, 0.1); color: #888; border: 1px solid rgba(136, 136, 136, 0.25); }
+
+  h1.up   { color: #2ecc71; }
+  h1.down { color: #e74c3c; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>BTC-USDT — Probability Cone</h1>
+  <h1 id="title">BTC-USDT — Probability Cone</h1>
   <div class="updated" id="updated">загрузка...</div>
+  <div class="signal flat" id="signal" style="display:none;"></div>
   <img src="btc_probability_cone.png" alt="probability cone">
   <div class="stats" id="stats">
     <div class="loading">считаю...</div>
@@ -49,6 +66,27 @@ fetch('btc_probability_cone.json?t=' + Date.now())
   .then(d => {
     document.getElementById('updated').textContent =
       'Обновлено: ' + new Date(d.updated_at).toLocaleString('ru-RU');
+
+    const title = document.getElementById('title');
+    const signal = document.getElementById('signal');
+    const pUp = d.p_up_pct;
+
+    if (pUp >= 65) {
+      title.className = 'up';
+      signal.className = 'signal up';
+      signal.textContent = `▲ Модель склоняется к росту: ${pUp}%`;
+      signal.style.display = 'block';
+    } else if (pUp <= 35) {
+      title.className = 'down';
+      signal.className = 'signal down';
+      signal.textContent = `▼ Модель склоняется к падению: ${pUp}%`;
+      signal.style.display = 'block';
+    } else {
+      title.className = '';
+      signal.className = 'signal flat';
+      signal.textContent = `Нет выраженного сигнала (${pUp}%) — рынок в неопределённости`;
+      signal.style.display = 'block';
+    }
 
     const p = d.percentiles;
     document.getElementById('stats').innerHTML = `
