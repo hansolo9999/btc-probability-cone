@@ -1,0 +1,17 @@
+{
+  "updated_at": "2026-08-04T11:16:37.178307+00:00",
+  "symbol": "BTC-USDT",
+  "last_price": 63722.0,
+  "forecast_bars": 20,
+  "p_up_pct": 50.3,
+  "regime_state": 1,
+  "garch_sigma": 0.01719,
+  "drift": 2e-05,
+  "percentiles": {
+    "p5": 56156.55,
+    "p25": 60633.54,
+    "p50": 63762.44,
+    "p75": 67042.86,
+    "p95": 72183.31
+  }
+}
