@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC Probability Cone</title>
+<style>
+  body {
+    background: #1a1a1a;
+    color: #e0e0e0;
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    margin: 0;
+    padding: 16px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 18px; font-weight: 600; margin: 8px 0 4px; }
+  .updated { color: #888; font-size: 12px; margin-bottom: 16px; }
+  img { width: 100%; border-radius: 8px; display: block; }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .card {
+    background: #242424;
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .card .label { color: #888; font-size: 11px; text-transform: uppercase; }
+  .card .value { font-size: 16px; font-weight: 600; margin-top: 2px; }
+  .p-up { color: #f5a623; }
+  .loading { color: #888; padding: 40px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>BTC-USDT — Probability Cone</h1>
+  <div class="updated" id="updated">загрузка...</div>
+  <img src="btc_probability_cone.png" alt="probability cone">
+  <div class="stats" id="stats">
+    <div class="loading">считаю...</div>
+  </div>
+</div>
+
+<script>
+fetch('btc_probability_cone.json?t=' + Date.now())
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById('updated').textContent =
+      'Обновлено: ' + new Date(d.updated_at).toLocaleString('ru-RU');
+
+    const p = d.percentiles;
+    document.getElementById('stats').innerHTML = `
+      <div class="card"><div class="label">Цена сейчас</div><div class="value">${d.last_price}</div></div>
+      <div class="card"><div class="label">P(рост, ${d.forecast_bars}д)</div><div class="value p-up">${d.p_up_pct}%</div></div>
+      <div class="card"><div class="label">Медиана прогноза</div><div class="value">${p.p50}</div></div>
+      <div class="card"><div class="label">Режим (HMM)</div><div class="value">${d.regime_state}</div></div>
+      <div class="card"><div class="label">90% диапазон</div><div class="value">${p.p5} — ${p.p95}</div></div>
+      <div class="card"><div class="label">50% диапазон</div><div class="value">${p.p25} — ${p.p75}</div></div>
+    `;
+  })
+  .catch(() => {
+    document.getElementById('stats').innerHTML = '<div class="loading">данные ещё не сгенерированы</div>';
+  });
+</script>
+</body>
+</html>
