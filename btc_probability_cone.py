@@ -42,10 +42,21 @@ NEWS_MOVE_Z = 2.5                       # порог z-score дневной до
 NEWS_MAX_EVENTS = 3                     # сколько последних резких дней подтягивать новостями
 NEWS_PER_EVENT = 2                      # сколько заголовков брать на одно событие
 
+# --- Бумажная торговля (виртуальный счёт, без реальных денег) ---
+PAPER_INITIAL_BALANCE = 10000.0
+PAPER_RISK_PCT = 0.02                   # риск на сделку — 2% от текущего баланса
+PAPER_LONG_THRESHOLD = 65.0             # P(рост) >= этого — открыть виртуальный лонг
+PAPER_SHORT_THRESHOLD = 35.0            # P(рост) <= этого — открыть виртуальный шорт
+ATR_WINDOW = 14
+ATR_TP_MULT = 4                         # TP = 4 ATR (твоя проверенная формула)
+ATR_SL_MULT = 1                         # SL = 1 ATR
+
 # Пишем прямо в docs/ — эту папку GitHub Pages отдаёт как сайт
 OUTPUT_DIR = "docs"
 OUTPUT_PNG = os.path.join(OUTPUT_DIR, "btc_probability_cone.png")
 OUTPUT_JSON = os.path.join(OUTPUT_DIR, "btc_probability_cone.json")
+PAPER_STATE_PATH = os.path.join(OUTPUT_DIR, "paper_trading_state.json")
+PAPER_EQUITY_PNG = os.path.join(OUTPUT_DIR, "paper_trading_equity.png")
 
 
 # ---------------- 1. ДАННЫЕ ----------------
@@ -255,44 +266,7 @@ def detect_large_trades(trades, multiplier=LARGE_TRADE_MULTIPLIER, top_n=5):
     return large[:top_n]
 
 
-# ---------------- 9. JSON ДЛЯ СТРАНИЦЫ ----------------
-def write_json(p_up, levels, last_price, regime, sigma, drift,
-                volume_info, liq_zones, futures_data, large_trades, news_events):
-    p5, p25, p50, p75, p95 = levels
-    payload = {
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "symbol": SYMBOL,
-        "last_price": round(float(last_price), 2),
-        "forecast_bars": FORECAST_BARS,
-        "p_up_pct": round(float(p_up), 1),
-        "regime_state": int(regime),
-        "garch_sigma": round(float(sigma), 5),
-        "drift": round(float(drift), 5),
-        "percentiles": {
-            "p5": round(float(p5), 2),
-            "p25": round(float(p25), 2),
-            "p50": round(float(p50), 2),
-            "p75": round(float(p75), 2),
-            "p95": round(float(p95), 2),
-        },
-        "volume": volume_info,
-        "liquidation_zones": liq_zones,
-        "futures": futures_data,
-        "large_trades": [
-            {**t, "time_iso": datetime.fromtimestamp(t["time"] / 1e9, tz=timezone.utc).isoformat()}
-            for t in large_trades
-        ] if large_trades else [],
-        "news_events": news_events or [],
-    }
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    with open(OUTPUT_JSON, "w") as f:
-        json.dump(payload, f, indent=2)
-    print("JSON сохранён:", OUTPUT_JSON)
-
-
-# ---------------- 10. НОВОСТИ У РЕЗКИХ ДВИЖЕНИЙ ----------------
-# Не пытаемся предсказать будущее по новостям — только честно показываем,
-# что писали в новостях в дни, когда цена уже резко дёрнулась (факт, не прогноз).
+# ---------------- 9. НОВОСТИ У РЕЗКИХ ДВИЖЕНИЙ ----------------
 def compute_return_zscores(df, window=VOLUME_SPIKE_WINDOW):
     ret = np.log(df["close"] / df["close"].shift(1))
     rolling_mean = ret.rolling(window).mean().shift(1)
@@ -345,6 +319,174 @@ def build_news_events(df):
     return events
 
 
+# ---------------- 10. JSON ДЛЯ СТРАНИЦЫ ----------------
+def write_json(p_up, levels, last_price, regime, sigma, drift,
+                volume_info, liq_zones, futures_data, large_trades, news_events, paper_stats):
+    p5, p25, p50, p75, p95 = levels
+    payload = {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "symbol": SYMBOL,
+        "last_price": round(float(last_price), 2),
+        "forecast_bars": FORECAST_BARS,
+        "p_up_pct": round(float(p_up), 1),
+        "regime_state": int(regime),
+        "garch_sigma": round(float(sigma), 5),
+        "drift": round(float(drift), 5),
+        "percentiles": {
+            "p5": round(float(p5), 2),
+            "p25": round(float(p25), 2),
+            "p50": round(float(p50), 2),
+            "p75": round(float(p75), 2),
+            "p95": round(float(p95), 2),
+        },
+        "volume": volume_info,
+        "liquidation_zones": liq_zones,
+        "futures": futures_data,
+        "large_trades": [
+            {**t, "time_iso": datetime.fromtimestamp(t["time"] / 1e9, tz=timezone.utc).isoformat()}
+            for t in large_trades
+        ] if large_trades else [],
+        "news_events": news_events or [],
+        "paper_trading": paper_stats,
+    }
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    with open(OUTPUT_JSON, "w") as f:
+        json.dump(payload, f, indent=2)
+    print("JSON сохранён:", OUTPUT_JSON)
+
+
+# ---------------- 11. БУМАЖНАЯ ТОРГОВЛЯ (виртуальный счёт) ----------------
+# Торгует не "ИИ по ощущениям", а уже посчитанный статистический сигнал (P(рост)).
+# Деньги виртуальные — цель: честно проверить, есть ли у сигнала реальное преимущество.
+def compute_atr(df, window=ATR_WINDOW):
+    high, low, close = df["high"], df["low"], df["close"]
+    prev_close = close.shift(1)
+    tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
+    atr = tr.rolling(window).mean()
+    return float(atr.iloc[-1])
+
+
+def load_paper_state():
+    try:
+        with open(PAPER_STATE_PATH, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"balance": PAPER_INITIAL_BALANCE, "position": None, "trade_history": [], "equity_curve": []}
+
+
+def save_paper_state(state):
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    with open(PAPER_STATE_PATH, "w") as f:
+        json.dump(state, f, indent=2)
+
+
+def open_paper_position(state, side, price, atr, now_iso):
+    risk_amount = state["balance"] * PAPER_RISK_PCT
+    sl_distance = atr * ATR_SL_MULT
+    tp_distance = atr * ATR_TP_MULT
+    size = risk_amount / sl_distance if sl_distance > 0 else 0
+    tp = price + tp_distance if side == "long" else price - tp_distance
+    sl = price - sl_distance if side == "long" else price + sl_distance
+    state["position"] = {
+        "side": side, "entry_price": round(price, 2), "entry_date": now_iso,
+        "size": round(size, 6), "tp": round(tp, 2), "sl": round(sl, 2), "atr": round(atr, 2),
+    }
+
+
+def close_paper_position(state, exit_price, now_iso, reason):
+    pos = state["position"]
+    if pos["side"] == "long":
+        pnl = (exit_price - pos["entry_price"]) * pos["size"]
+    else:
+        pnl = (pos["entry_price"] - exit_price) * pos["size"]
+    state["balance"] = round(state["balance"] + pnl, 2)
+    trade = {
+        "side": pos["side"], "entry_price": pos["entry_price"], "entry_date": pos["entry_date"],
+        "exit_price": round(exit_price, 2), "exit_date": now_iso, "pnl": round(pnl, 2),
+        "reason": reason, "size": pos["size"],
+    }
+    state.setdefault("trade_history", []).append(trade)
+    state["trade_history"] = state["trade_history"][-100:]
+    state["position"] = None
+    return trade
+
+
+def update_paper_trading(df, p_up, last_price):
+    state = load_paper_state()
+    atr = compute_atr(df)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    if state.get("position"):
+        pos = state["position"]
+        if pos["side"] == "long":
+            if last_price >= pos["tp"]:
+                close_paper_position(state, last_price, now_iso, "tp_hit")
+            elif last_price <= pos["sl"]:
+                close_paper_position(state, last_price, now_iso, "sl_hit")
+        else:
+            if last_price <= pos["tp"]:
+                close_paper_position(state, last_price, now_iso, "tp_hit")
+            elif last_price >= pos["sl"]:
+                close_paper_position(state, last_price, now_iso, "sl_hit")
+
+    if not state.get("position"):
+        if p_up >= PAPER_LONG_THRESHOLD:
+            open_paper_position(state, "long", last_price, atr, now_iso)
+        elif p_up <= PAPER_SHORT_THRESHOLD:
+            open_paper_position(state, "short", last_price, atr, now_iso)
+
+    equity = state["balance"]
+    if state.get("position"):
+        pos = state["position"]
+        unrealized = ((last_price - pos["entry_price"]) if pos["side"] == "long"
+                      else (pos["entry_price"] - last_price)) * pos["size"]
+        equity += unrealized
+    state.setdefault("equity_curve", []).append({"date": now_iso, "equity": round(equity, 2), "price": round(last_price, 2)})
+    state["equity_curve"] = state["equity_curve"][-500:]
+
+    save_paper_state(state)
+    return state
+
+
+def compute_paper_stats(state):
+    trades = state.get("trade_history", [])
+    total = len(trades)
+    wins = sum(1 for t in trades if t["pnl"] > 0)
+    win_rate = round(wins / total * 100, 1) if total > 0 else None
+    total_return_pct = round((state["balance"] - PAPER_INITIAL_BALANCE) / PAPER_INITIAL_BALANCE * 100, 2)
+    return {
+        "balance": round(state["balance"], 2),
+        "total_return_pct": total_return_pct,
+        "total_trades": total,
+        "wins": wins,
+        "losses": total - wins,
+        "win_rate": win_rate,
+        "position": state.get("position"),
+    }
+
+
+def plot_paper_equity(state):
+    curve = state.get("equity_curve", [])
+    if len(curve) < 2:
+        return
+    dates = [pd.to_datetime(c["date"]) for c in curve]
+    equity = [c["equity"] for c in curve]
+
+    plt.style.use("dark_background")
+    fig, ax = plt.subplots(figsize=(11, 3.5), dpi=150)
+    color = "#2ecc71" if equity[-1] >= PAPER_INITIAL_BALANCE else "#e74c3c"
+    ax.plot(dates, equity, color=color, linewidth=1.5)
+    ax.axhline(PAPER_INITIAL_BALANCE, color="#888", linestyle="--", linewidth=1, alpha=0.5)
+    ax.fill_between(dates, equity, PAPER_INITIAL_BALANCE, color=color, alpha=0.1)
+    ax.set_title("Бумажный счёт — виртуальный equity (старт $10,000)", color="#e0e0e0", fontsize=10)
+    ax.grid(alpha=0.1)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b"))
+    fig.autofmt_xdate()
+    plt.tight_layout()
+    plt.savefig(PAPER_EQUITY_PNG, facecolor="#1a1a1a")
+    plt.close(fig)
+
+
 # ---------------- MAIN ----------------
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -367,6 +509,10 @@ def main():
 
     p_up, levels = plot_cone(df, paths, liq_zones=liq_zones, volume_info=volume_info, news_events=news_events)
 
+    paper_state = update_paper_trading(df, p_up, last_price)
+    paper_stats = compute_paper_stats(paper_state)
+    plot_paper_equity(paper_state)
+
     print(f"Текущая цена: {last_price:.2f}")
     print(f"Режим (HMM state): {regime}, дрифт: {drift:.5f}, GARCH sigma: {sigma:.5f}")
     print(f"P(рост через {FORECAST_BARS} дней): {p_up:.1f}%")
@@ -374,9 +520,10 @@ def main():
     print(f"Объём: текущий {volume_info['current_volume']}, z-score {volume_info['z_score']}, спайк: {volume_info['is_spike']}")
     print(f"Крупных сделок найдено: {len(large_trades)}")
     print(f"Резких дней с новостями найдено: {len(news_events)}")
+    print(f"Бумажный счёт: ${paper_stats['balance']} ({paper_stats['total_return_pct']:+.2f}%), сделок: {paper_stats['total_trades']}, win rate: {paper_stats['win_rate']}")
 
     write_json(p_up, levels, last_price, regime, sigma, drift,
-               volume_info, liq_zones, futures_data, large_trades, news_events)
+               volume_info, liq_zones, futures_data, large_trades, news_events, paper_stats)
 
 
 if __name__ == "__main__":
