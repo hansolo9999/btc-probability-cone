@@ -108,6 +108,36 @@
     padding: 3px 0;
   }
   .news-headline .src { color: #666; }
+
+  .paper-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .paper-position {
+    background: #242424;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+  }
+  .paper-position.long { border-left: 3px solid #2ecc71; }
+  .paper-position.short { border-left: 3px solid #e74c3c; }
+  .paper-trade-row {
+    display: flex;
+    justify-content: space-between;
+    background: #242424;
+    padding: 7px 12px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    font-size: 12px;
+  }
+  .paper-trade-row .pnl-pos { color: #2ecc71; font-weight: 600; }
+  .paper-trade-row .pnl-neg { color: #e74c3c; font-weight: 600; }
+  .paper-disclaimer { color: #666; font-size: 11px; margin-top: 6px; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -119,6 +149,12 @@
   <div class="stats" id="stats">
     <div class="loading">считаю...</div>
   </div>
+
+  <div class="section-title">Бумажная торговля (виртуальный счёт, без реальных денег)</div>
+  <img src="paper_trading_equity.png" alt="paper trading equity" style="margin-bottom:8px;" onerror="this.style.display='none'">
+  <div class="paper-stats" id="paper-stats-section"><div class="empty-note">загрузка...</div></div>
+  <div id="paper-position-section"></div>
+  <div id="paper-trades-section"></div>
 
   <div class="section-title">Объём</div>
   <div id="volume-section"><div class="empty-note">загрузка...</div></div>
@@ -170,6 +206,35 @@ fetch('btc_probability_cone.json?t=' + Date.now())
       <div class="card"><div class="label">90% диапазон</div><div class="value">${p.p5} — ${p.p95}</div></div>
       <div class="card"><div class="label">50% диапазон</div><div class="value">${p.p25} — ${p.p75}</div></div>
     `;
+
+    // --- Бумажная торговля ---
+    const pt = d.paper_trading;
+    const ptStats = document.getElementById('paper-stats-section');
+    const ptPos = document.getElementById('paper-position-section');
+    const ptTrades = document.getElementById('paper-trades-section');
+    if (pt) {
+      const retColor = pt.total_return_pct >= 0 ? '#2ecc71' : '#e74c3c';
+      ptStats.innerHTML = `
+        <div class="card"><div class="label">Баланс</div><div class="value">$${pt.balance.toLocaleString()}</div></div>
+        <div class="card"><div class="label">Доходность</div><div class="value" style="color:${retColor}">${pt.total_return_pct > 0 ? '+' : ''}${pt.total_return_pct}%</div></div>
+        <div class="card"><div class="label">Сделок закрыто</div><div class="value">${pt.total_trades}</div></div>
+        <div class="card"><div class="label">Win rate</div><div class="value">${pt.win_rate !== null ? pt.win_rate + '%' : '—'}</div></div>
+      `;
+      if (pt.position) {
+        const pos = pt.position;
+        ptPos.innerHTML = `
+          <div class="paper-position ${pos.side}">
+            <span>${pos.side === 'long' ? '▲ LONG' : '▼ SHORT'} открыт по ${pos.entry_price}</span>
+            <span>TP ${pos.tp} / SL ${pos.sl}</span>
+          </div>
+        `;
+      } else {
+        ptPos.innerHTML = '<div class="empty-note">сейчас вне рынка, ждёт сигнала ≥65% или ≤35%</div>';
+      }
+      ptTrades.innerHTML = `<div class="paper-disclaimer">Виртуальный счёт, старт $10,000. Вход по сигналу модели (не гарантия прибыли), выход по TP=4 ATR / SL=1 ATR.</div>`;
+    } else {
+      ptStats.innerHTML = '<div class="empty-note">данные ещё не сгенерированы</div>';
+    }
 
     // --- Объём ---
     const v = d.volume;
@@ -259,6 +324,9 @@ fetch('btc_probability_cone.json?t=' + Date.now())
   })
   .catch(() => {
     document.getElementById('stats').innerHTML = '<div class="loading">данные ещё не сгенерированы</div>';
+    document.getElementById('paper-stats-section').innerHTML = '';
+    document.getElementById('paper-position-section').innerHTML = '';
+    document.getElementById('paper-trades-section').innerHTML = '';
     document.getElementById('volume-section').innerHTML = '';
     document.getElementById('liq-section').innerHTML = '';
     document.getElementById('trades-section').innerHTML = '';
