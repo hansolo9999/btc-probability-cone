@@ -36,6 +36,12 @@ VOLUME_SPIKE_WINDOW = 20               # дней для базовой лини
 VOLUME_SPIKE_Z = 2.0                   # порог z-score для флага "аномальный объём"
 LARGE_TRADE_MULTIPLIER = 5             # во сколько раз сделка больше медианной = "крупная"
 
+# --- Новости у резких движений цены ---
+NEWS_LOOKBACK_DAYS = 30                 # искать резкие движения в последних N днях
+NEWS_MOVE_Z = 2.5                       # порог z-score дневной доходности = "резкое движение"
+NEWS_MAX_EVENTS = 3                     # сколько последних резких дней подтягивать новостями
+NEWS_PER_EVENT = 2                      # сколько заголовков брать на одно событие
+
 # Пишем прямо в docs/ — эту папку GitHub Pages отдаёт как сайт
 OUTPUT_DIR = "docs"
 OUTPUT_PNG = os.path.join(OUTPUT_DIR, "btc_probability_cone.png")
@@ -96,7 +102,7 @@ def compute_volume_zscores(df, window=VOLUME_SPIKE_WINDOW):
     return z.fillna(0)
 
 
-def plot_cone(hist_df, price_paths, liq_zones=None, volume_info=None, forecast_bars=FORECAST_BARS):
+def plot_cone(hist_df, price_paths, liq_zones=None, volume_info=None, news_events=None, forecast_bars=FORECAST_BARS):
     last_price = hist_df["close"].iloc[-1]
     p5, p25, p50, p75, p95 = np.percentile(price_paths, [5, 25, 50, 75, 95], axis=0)
 
@@ -138,6 +144,21 @@ def plot_cone(hist_df, price_paths, liq_zones=None, volume_info=None, forecast_b
                     color="#2ecc71", fontsize=7, va="bottom", alpha=min(alpha + 0.3, 1))
             ax.text(hist_dates.iloc[0], z["short_liq"], f' {z["leverage"]}x short стоп',
                     color="#e74c3c", fontsize=7, va="top", alpha=min(alpha + 0.3, 1))
+
+    # --- метки дней с резким движением (факт, не прогноз) ---
+    if news_events:
+        for ev in news_events:
+            ev_date = pd.to_datetime(ev["date"])
+            if ev_date < hist_dates.iloc[0]:
+                continue
+            color = "#2ecc71" if ev["move_pct"] > 0 else "#e74c3c"
+            marker = "^" if ev["move_pct"] > 0 else "v"
+            ax.axvline(ev_date, color=color, linestyle="-", linewidth=0.8, alpha=0.35)
+            ax.scatter([ev_date], [ev["price"]], color=color, marker=marker, s=60, zorder=6, edgecolors="white", linewidths=0.5)
+            ax.annotate(f'{ev["move_pct"]:+.1f}%', xy=(ev_date, ev["price"]),
+                        xytext=(0, 12 if ev["move_pct"] > 0 else -16),
+                        textcoords="offset points", color=color, fontsize=7,
+                        ha="center", fontweight="bold")
 
     ax.set_title(f"BTC-USDT Probability Cone ({forecast_bars}d forecast)", color="#e0e0e0")
     ax.legend(loc="upper left", framealpha=0.2, fontsize=9)
@@ -236,7 +257,7 @@ def detect_large_trades(trades, multiplier=LARGE_TRADE_MULTIPLIER, top_n=5):
 
 # ---------------- 9. JSON ДЛЯ СТРАНИЦЫ ----------------
 def write_json(p_up, levels, last_price, regime, sigma, drift,
-                volume_info, liq_zones, futures_data, large_trades):
+                volume_info, liq_zones, futures_data, large_trades, news_events):
     p5, p25, p50, p75, p95 = levels
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -261,11 +282,67 @@ def write_json(p_up, levels, last_price, regime, sigma, drift,
             {**t, "time_iso": datetime.fromtimestamp(t["time"] / 1e9, tz=timezone.utc).isoformat()}
             for t in large_trades
         ] if large_trades else [],
+        "news_events": news_events or [],
     }
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     with open(OUTPUT_JSON, "w") as f:
         json.dump(payload, f, indent=2)
     print("JSON сохранён:", OUTPUT_JSON)
+
+
+# ---------------- 10. НОВОСТИ У РЕЗКИХ ДВИЖЕНИЙ ----------------
+# Не пытаемся предсказать будущее по новостям — только честно показываем,
+# что писали в новостях в дни, когда цена уже резко дёрнулась (факт, не прогноз).
+def compute_return_zscores(df, window=VOLUME_SPIKE_WINDOW):
+    ret = np.log(df["close"] / df["close"].shift(1))
+    rolling_mean = ret.rolling(window).mean().shift(1)
+    rolling_std = ret.rolling(window).std().shift(1)
+    z = (ret - rolling_mean) / rolling_std
+    return z.fillna(0)
+
+
+def detect_big_move_days(df, lookback=NEWS_LOOKBACK_DAYS, z_thresh=NEWS_MOVE_Z, max_events=NEWS_MAX_EVENTS):
+    z = compute_return_zscores(df)
+    recent = df.iloc[-lookback:].copy()
+    recent["z"] = z.iloc[-lookback:].values
+    recent["ret_pct"] = (recent["close"] / recent["close"].shift(1) - 1) * 100
+    big_moves = recent[recent["z"].abs() >= z_thresh]
+    big_moves = big_moves.sort_values("time", ascending=False).head(max_events)
+    return big_moves[["time", "close", "ret_pct", "z"]].to_dict("records")
+
+
+def fetch_news_near_date(target_dt, max_articles=NEWS_PER_EVENT):
+    try:
+        target_ts = int(target_dt.timestamp())
+        r = requests.get("https://min-api.cryptocompare.com/data/v2/news/",
+                          params={"lang": "EN", "lTs": target_ts + 86400}, timeout=10)
+        r.raise_for_status()
+        articles = r.json().get("Data", [])
+        articles.sort(key=lambda a: abs(a["published_on"] - target_ts))
+        return [{
+            "title": a["title"],
+            "source": a.get("source_info", {}).get("name", a.get("source", "")),
+            "url": a["url"],
+            "published_on": datetime.fromtimestamp(a["published_on"], tz=timezone.utc).isoformat(),
+        } for a in articles[:max_articles]]
+    except Exception as e:
+        print("Новости недоступны для даты", target_dt, ":", e)
+        return []
+
+
+def build_news_events(df):
+    big_moves = detect_big_move_days(df)
+    events = []
+    for m in big_moves:
+        news = fetch_news_near_date(m["time"])
+        events.append({
+            "date": m["time"].isoformat(),
+            "move_pct": round(float(m["ret_pct"]), 2),
+            "price": round(float(m["close"]), 2),
+            "z_score": round(float(m["z"]), 2),
+            "news": news,
+        })
+    return events
 
 
 # ---------------- MAIN ----------------
@@ -286,8 +363,9 @@ def main():
     futures_data = fetch_binance_futures_data()
     trades = fetch_kucoin_recent_trades()
     large_trades = detect_large_trades(trades)
+    news_events = build_news_events(df)
 
-    p_up, levels = plot_cone(df, paths, liq_zones=liq_zones, volume_info=volume_info)
+    p_up, levels = plot_cone(df, paths, liq_zones=liq_zones, volume_info=volume_info, news_events=news_events)
 
     print(f"Текущая цена: {last_price:.2f}")
     print(f"Режим (HMM state): {regime}, дрифт: {drift:.5f}, GARCH sigma: {sigma:.5f}")
@@ -295,9 +373,10 @@ def main():
     print(f"5/25/50/75/95 перцентили: {[round(x, 2) for x in levels]}")
     print(f"Объём: текущий {volume_info['current_volume']}, z-score {volume_info['z_score']}, спайк: {volume_info['is_spike']}")
     print(f"Крупных сделок найдено: {len(large_trades)}")
+    print(f"Резких дней с новостями найдено: {len(news_events)}")
 
     write_json(p_up, levels, last_price, regime, sigma, drift,
-               volume_info, liq_zones, futures_data, large_trades)
+               volume_info, liq_zones, futures_data, large_trades, news_events)
 
 
 if __name__ == "__main__":
