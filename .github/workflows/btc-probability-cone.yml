@@ -2,7 +2,7 @@ name: BTC Probability Cone
 
 on:
   schedule:
-    - cron: '0 */1 * * *'
+    - cron: '0 * * * *'   # каждый час
   workflow_dispatch: {}
 
 permissions:
