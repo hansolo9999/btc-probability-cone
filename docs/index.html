@@ -47,6 +47,44 @@
 
   h1.up   { color: #2ecc71; }
   h1.down { color: #e74c3c; }
+
+  .section-title {
+    font-size: 13px;
+    color: #888;
+    text-transform: uppercase;
+    margin: 24px 0 8px;
+    letter-spacing: 0.5px;
+  }
+  .volume-card {
+    background: #242424;
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .volume-card.spike { border: 1px solid rgba(245, 166, 35, 0.5); background: rgba(245, 166, 35, 0.08); }
+  .liq-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .liq-table th { color: #888; font-weight: 500; text-align: right; padding: 6px 8px; font-size: 11px; text-transform: uppercase; }
+  .liq-table th:first-child, .liq-table td:first-child { text-align: left; }
+  .liq-table td { padding: 6px 8px; text-align: right; background: #242424; }
+  .liq-table tr:first-child td { border-radius: 8px 8px 0 0; }
+  .liq-table tr:last-child td { border-radius: 0 0 8px 8px; }
+  .liq-long { color: #2ecc71; }
+  .liq-short { color: #e74c3c; }
+  .futures-note { color: #666; font-size: 11px; margin-top: 6px; }
+  .trade-row {
+    display: flex;
+    justify-content: space-between;
+    background: #242424;
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    font-size: 13px;
+  }
+  .trade-row.buy .trade-side { color: #2ecc71; }
+  .trade-row.sell .trade-side { color: #e74c3c; }
+  .empty-note { color: #666; font-size: 13px; padding: 12px; text-align: center; }
 </style>
 </head>
 <body>
@@ -58,6 +96,15 @@
   <div class="stats" id="stats">
     <div class="loading">считаю...</div>
   </div>
+
+  <div class="section-title">Объём</div>
+  <div id="volume-section"><div class="empty-note">загрузка...</div></div>
+
+  <div class="section-title">Зоны ликвидации (оценка)</div>
+  <div id="liq-section"><div class="empty-note">загрузка...</div></div>
+
+  <div class="section-title">Крупные сделки (последние ~100)</div>
+  <div id="trades-section"><div class="empty-note">загрузка...</div></div>
 </div>
 
 <script>
@@ -97,9 +144,74 @@ fetch('btc_probability_cone.json?t=' + Date.now())
       <div class="card"><div class="label">90% диапазон</div><div class="value">${p.p5} — ${p.p95}</div></div>
       <div class="card"><div class="label">50% диапазон</div><div class="value">${p.p25} — ${p.p75}</div></div>
     `;
+
+    // --- Объём ---
+    const v = d.volume;
+    const volSection = document.getElementById('volume-section');
+    if (v) {
+      volSection.innerHTML = `
+        <div class="volume-card ${v.is_spike ? 'spike' : ''}">
+          <div>
+            <div class="label">Текущий / средний (${'20д'})</div>
+            <div class="value">${v.current_volume} / ${v.avg_volume}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="label">Z-score</div>
+            <div class="value" style="color:${v.is_spike ? '#f5a623' : '#e0e0e0'}">${v.z_score}${v.is_spike ? ' ⚡' : ''}</div>
+          </div>
+        </div>
+      `;
+    } else {
+      volSection.innerHTML = '<div class="empty-note">данные недоступны</div>';
+    }
+
+    // --- Зоны ликвидации ---
+    const liqSection = document.getElementById('liq-section');
+    if (d.liquidation_zones && d.liquidation_zones.length) {
+      let rows = d.liquidation_zones.map(z => `
+        <tr>
+          <td>${z.leverage}x</td>
+          <td class="liq-long">${z.long_liq}</td>
+          <td class="liq-short">${z.short_liq}</td>
+        </tr>
+      `).join('');
+      let futuresNote = '';
+      if (d.futures) {
+        futuresNote = `<div class="futures-note">Binance Futures OI: ${d.futures.open_interest_btc} BTC · funding: ${d.futures.funding_rate_pct}%</div>`;
+      } else {
+        futuresNote = `<div class="futures-note">Binance Futures данные недоступны в этом запуске</div>`;
+      }
+      liqSection.innerHTML = `
+        <table class="liq-table">
+          <tr><th>Плечо</th><th>Long ликв.</th><th>Short ликв.</th></tr>
+          ${rows}
+        </table>
+        ${futuresNote}
+        <div class="futures-note">Оценка «если открыть позицию сейчас», не карта реальных чужих стопов</div>
+      `;
+    } else {
+      liqSection.innerHTML = '<div class="empty-note">данные недоступны</div>';
+    }
+
+    // --- Крупные сделки ---
+    const tradesSection = document.getElementById('trades-section');
+    if (d.large_trades && d.large_trades.length) {
+      tradesSection.innerHTML = d.large_trades.map(t => `
+        <div class="trade-row ${t.side}">
+          <span class="trade-side">${t.side === 'buy' ? '▲ BUY' : '▼ SELL'}</span>
+          <span>${t.size.toFixed(4)} BTC</span>
+          <span>@ ${t.price}</span>
+        </div>
+      `).join('');
+    } else {
+      tradesSection.innerHTML = '<div class="empty-note">крупных сделок в последнем окне не найдено</div>';
+    }
   })
   .catch(() => {
     document.getElementById('stats').innerHTML = '<div class="loading">данные ещё не сгенерированы</div>';
+    document.getElementById('volume-section').innerHTML = '';
+    document.getElementById('liq-section').innerHTML = '';
+    document.getElementById('trades-section').innerHTML = '';
   });
 </script>
 </body>
