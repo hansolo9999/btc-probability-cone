@@ -1,7 +1,7 @@
 """
 BTC Probability Cone Projection
 --------------------------------
-Тянет дневные свечи BTC-USDT с KuCoin, считает EGARCH волатильность (с учётом асимметрии),
+Тянет дневные свечи BTC-USDT с KuCoin, считает GARCH(1,1) волатильность,
 HMM определяет текущий режим (дрифт), Monte Carlo с Student-t шоками (жирные хвосты)
 строит веер будущих цен -> перцентили 5/25/50/75/95 -> график-конус.
 
@@ -28,6 +28,13 @@ LOOKBACK_DAYS = 500
 FORECAST_BARS = 20
 N_SIMS = 10000
 T_DOF = 4                # степени свободы Student-t (меньше = жирнее хвосты)
+
+# --- Объёмы и ликвидации ---
+BINANCE_FUTURES_SYMBOL = "BTCUSDT"
+LEVERAGE_TIERS = [10, 25, 50, 100]     # для приближённой оценки зон ликвидации
+VOLUME_SPIKE_WINDOW = 20               # дней для базовой линии объёма
+VOLUME_SPIKE_Z = 2.0                   # порог z-score для флага "аномальный объём"
+LARGE_TRADE_MULTIPLIER = 5             # во сколько раз сделка больше медианной = "крупная"
 
 # Пишем прямо в docs/ — эту папку GitHub Pages отдаёт как сайт
 OUTPUT_DIR = "docs"
@@ -114,8 +121,85 @@ def plot_cone(hist_df, price_paths, forecast_bars=FORECAST_BARS):
     return p_up, (p5[-1], p25[-1], p50[-1], p75[-1], p95[-1])
 
 
-# ---------------- 6. JSON ДЛЯ СТРАНИЦЫ ----------------
-def write_json(p_up, levels, last_price, regime, sigma, drift):
+# ---------------- 6. ВСПЛЕСК ОБЪЁМА ----------------
+def detect_volume_spike(df, window=VOLUME_SPIKE_WINDOW, z_thresh=VOLUME_SPIKE_Z):
+    vol = df["volume"].astype(float)
+    baseline = vol.iloc[-(window + 1):-1]
+    current = vol.iloc[-1]
+    mean = baseline.mean()
+    std = baseline.std()
+    z = (current - mean) / std if std > 0 else 0.0
+    return {
+        "current_volume": round(float(current), 2),
+        "avg_volume": round(float(mean), 2),
+        "z_score": round(float(z), 2),
+        "is_spike": bool(z >= z_thresh),
+    }
+
+
+# ---------------- 7. ПРИБЛИЖЁННЫЕ ЗОНЫ ЛИКВИДАЦИЙ ----------------
+def fetch_binance_futures_data(symbol=BINANCE_FUTURES_SYMBOL):
+    try:
+        oi = requests.get("https://fapi.binance.com/fapi/v1/openInterest",
+                           params={"symbol": symbol}, timeout=10)
+        oi.raise_for_status()
+        funding = requests.get("https://fapi.binance.com/fapi/v1/premiumIndex",
+                                params={"symbol": symbol}, timeout=10)
+        funding.raise_for_status()
+        oi_data = oi.json()
+        f_data = funding.json()
+        return {
+            "open_interest_btc": round(float(oi_data["openInterest"]), 2),
+            "funding_rate_pct": round(float(f_data["lastFundingRate"]) * 100, 4),
+            "mark_price": round(float(f_data["markPrice"]), 2),
+        }
+    except Exception as e:
+        print("Binance futures data недоступны:", e)
+        return None
+
+
+def estimate_liquidation_zones(current_price, leverages=LEVERAGE_TIERS):
+    zones = []
+    for lev in leverages:
+        long_liq = current_price * (1 - 1 / lev)
+        short_liq = current_price * (1 + 1 / lev)
+        zones.append({
+            "leverage": lev,
+            "long_liq": round(long_liq, 2),
+            "short_liq": round(short_liq, 2),
+        })
+    return zones
+
+
+# ---------------- 8. КРУПНЫЕ СДЕЛКИ ----------------
+def fetch_kucoin_recent_trades(symbol=SYMBOL):
+    try:
+        r = requests.get("https://api.kucoin.com/api/v1/market/histories",
+                          params={"symbol": symbol}, timeout=10)
+        r.raise_for_status()
+        data = r.json()["data"]
+        return [{"price": float(t["price"]), "size": float(t["size"]),
+                  "side": t["side"], "time": int(t["time"])} for t in data]
+    except Exception as e:
+        print("KuCoin trade history недоступна:", e)
+        return []
+
+
+def detect_large_trades(trades, multiplier=LARGE_TRADE_MULTIPLIER, top_n=5):
+    if not trades:
+        return []
+    sizes = [t["size"] for t in trades]
+    median_size = np.median(sizes)
+    if median_size == 0:
+        return []
+    large = [t for t in trades if t["size"] >= median_size * multiplier]
+    large.sort(key=lambda t: t["size"], reverse=True)
+    return large[:top_n]
+
+
+# ---------------- 9. JSON ДЛЯ СТРАНИЦЫ ----------------
+def write_json(p_up, levels, last_price, regime, sigma, drift,
+                volume_info, liq_zones, futures_data, large_trades):
     p5, p25, p50, p75, p95 = levels
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -133,6 +217,13 @@ def write_json(p_up, levels, last_price, regime, sigma, drift):
             "p75": round(float(p75), 2),
             "p95": round(float(p95), 2),
         },
+        "volume": volume_info,
+        "liquidation_zones": liq_zones,
+        "futures": futures_data,
+        "large_trades": [
+            {**t, "time_iso": datetime.fromtimestamp(t["time"] / 1e9, tz=timezone.utc).isoformat()}
+            for t in large_trades
+        ] if large_trades else [],
     }
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     with open(OUTPUT_JSON, "w") as f:
@@ -154,12 +245,21 @@ def main():
     paths = simulate_paths(last_price, drift, sigma)
     p_up, levels = plot_cone(df, paths)
 
+    volume_info = detect_volume_spike(df)
+    liq_zones = estimate_liquidation_zones(last_price)
+    futures_data = fetch_binance_futures_data()
+    trades = fetch_kucoin_recent_trades()
+    large_trades = detect_large_trades(trades)
+
     print(f"Текущая цена: {last_price:.2f}")
     print(f"Режим (HMM state): {regime}, дрифт: {drift:.5f}, GARCH sigma: {sigma:.5f}")
     print(f"P(рост через {FORECAST_BARS} дней): {p_up:.1f}%")
     print(f"5/25/50/75/95 перцентили: {[round(x, 2) for x in levels]}")
+    print(f"Объём: текущий {volume_info['current_volume']}, z-score {volume_info['z_score']}, спайк: {volume_info['is_spike']}")
+    print(f"Крупных сделок найдено: {len(large_trades)}")
 
-    write_json(p_up, levels, last_price, regime, sigma, drift)
+    write_json(p_up, levels, last_price, regime, sigma, drift,
+               volume_info, liq_zones, futures_data, large_trades)
 
 
 if __name__ == "__main__":
