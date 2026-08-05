@@ -1,0 +1,12 @@
+{
+  "balance": 10000.0,
+  "position": null,
+  "trade_history": [],
+  "equity_curve": [
+    {
+      "date": "2026-08-05T07:38:55.383918+00:00",
+      "equity": 10000.0,
+      "price": 64070.2
+    }
+  ]
+}
