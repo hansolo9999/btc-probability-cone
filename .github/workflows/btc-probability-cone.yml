@@ -30,6 +30,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/btc_probability_cone.png docs/btc_probability_cone.json
+          git add docs/btc_probability_cone.png docs/btc_probability_cone.json docs/paper_trading_state.json docs/paper_trading_equity.png
           git diff --staged --quiet || git commit -m "Update BTC probability cone"
           git push
