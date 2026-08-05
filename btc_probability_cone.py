@@ -88,17 +88,32 @@ def simulate_paths(last_price, drift, sigma, n_sims=N_SIMS, horizon=FORECAST_BAR
 
 
 # ---------------- 5. ГРАФИК ----------------
-def plot_cone(hist_df, price_paths, forecast_bars=FORECAST_BARS):
+def compute_volume_zscores(df, window=VOLUME_SPIKE_WINDOW):
+    vol = df["volume"].astype(float)
+    rolling_mean = vol.rolling(window).mean().shift(1)
+    rolling_std = vol.rolling(window).std().shift(1)
+    z = (vol - rolling_mean) / rolling_std
+    return z.fillna(0)
+
+
+def plot_cone(hist_df, price_paths, liq_zones=None, volume_info=None, forecast_bars=FORECAST_BARS):
     last_price = hist_df["close"].iloc[-1]
     p5, p25, p50, p75, p95 = np.percentile(price_paths, [5, 25, 50, 75, 95], axis=0)
 
     hist_dates = hist_df["time"].iloc[-90:]
     hist_prices = hist_df["close"].iloc[-90:]
+    hist_volumes = hist_df["volume"].iloc[-90:].astype(float)
+    vol_z = compute_volume_zscores(hist_df).iloc[-90:]
     last_date = hist_df["time"].iloc[-1]
     fwd_dates = pd.date_range(last_date, periods=forecast_bars + 1, freq="D")[1:]
 
     plt.style.use("dark_background")
-    fig, ax = plt.subplots(figsize=(11, 6), dpi=150)
+    fig, (ax, ax_vol) = plt.subplots(
+        2, 1, figsize=(11, 8), dpi=150,
+        gridspec_kw={"height_ratios": [3, 1]}, sharex=True,
+    )
+
+    # --- цена + конус ---
     ax.plot(hist_dates, hist_prices, color="#e0e0e0", linewidth=1.4, label="История")
     ax.fill_between(fwd_dates, p5, p95, color="#3a7bd5", alpha=0.18, label="90% интервал")
     ax.fill_between(fwd_dates, p25, p75, color="#3a7bd5", alpha=0.35, label="50% интервал")
@@ -111,10 +126,32 @@ def plot_cone(hist_df, price_paths, forecast_bars=FORECAST_BARS):
                 textcoords="offset points", color="#f5a623", fontsize=10,
                 arrowprops=dict(arrowstyle="->", color="#f5a623", alpha=0.7))
 
+    # --- зоны ликвидации (только 10x и 25x — иначе график превращается в кашу) ---
+    if liq_zones:
+        for z in liq_zones:
+            if z["leverage"] not in (10, 25):
+                continue
+            alpha = 0.55 if z["leverage"] == 10 else 0.32
+            ax.axhline(z["long_liq"], color="#2ecc71", linestyle=":", linewidth=1.1, alpha=alpha)
+            ax.axhline(z["short_liq"], color="#e74c3c", linestyle=":", linewidth=1.1, alpha=alpha)
+            ax.text(hist_dates.iloc[0], z["long_liq"], f' {z["leverage"]}x long стоп',
+                    color="#2ecc71", fontsize=7, va="bottom", alpha=min(alpha + 0.3, 1))
+            ax.text(hist_dates.iloc[0], z["short_liq"], f' {z["leverage"]}x short стоп',
+                    color="#e74c3c", fontsize=7, va="top", alpha=min(alpha + 0.3, 1))
+
     ax.set_title(f"BTC-USDT Probability Cone ({forecast_bars}d forecast)", color="#e0e0e0")
     ax.legend(loc="upper left", framealpha=0.2, fontsize=9)
     ax.grid(alpha=0.1)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b"))
+
+    # --- объём: аномальные дни (z >= порога) подсвечены оранжевым ---
+    bar_colors = ["#f5a623" if zz >= VOLUME_SPIKE_Z else "#3a7bd5" for zz in vol_z]
+    ax_vol.bar(hist_dates, hist_volumes, color=bar_colors, width=0.8)
+    if volume_info:
+        ax_vol.axhline(volume_info["avg_volume"], color="#888", linestyle="--", linewidth=1, alpha=0.6)
+    ax_vol.set_ylabel("Объём", color="#888", fontsize=9)
+    ax_vol.grid(alpha=0.1)
+    ax_vol.xaxis.set_major_formatter(mdates.DateFormatter("%d %b"))
+
     fig.autofmt_xdate()
     plt.tight_layout()
     plt.savefig(OUTPUT_PNG, facecolor="#1a1a1a")
@@ -243,13 +280,14 @@ def main():
 
     last_price = df["close"].iloc[-1]
     paths = simulate_paths(last_price, drift, sigma)
-    p_up, levels = plot_cone(df, paths)
 
     volume_info = detect_volume_spike(df)
     liq_zones = estimate_liquidation_zones(last_price)
     futures_data = fetch_binance_futures_data()
     trades = fetch_kucoin_recent_trades()
     large_trades = detect_large_trades(trades)
+
+    p_up, levels = plot_cone(df, paths, liq_zones=liq_zones, volume_info=volume_info)
 
     print(f"Текущая цена: {last_price:.2f}")
     print(f"Режим (HMM state): {regime}, дрифт: {drift:.5f}, GARCH sigma: {sigma:.5f}")
