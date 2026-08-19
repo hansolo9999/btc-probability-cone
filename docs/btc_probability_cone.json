@@ -1,71 +1,49 @@
 {
-  "updated_at": "2026-08-19T10:31:27.264165+00:00",
+  "updated_at": "2026-08-19T11:27:45.253396+00:00",
   "symbol": "BTC-USDT",
-  "last_price": 64379.1,
+  "last_price": 64514.0,
   "forecast_bars": 20,
-  "p_up_pct": 58.4,
+  "p_up_pct": 50.1,
   "regime_state": 0,
-  "garch_sigma": 0.01572,
-  "drift": 0.00069,
+  "garch_sigma": 0.01534,
+  "drift": -4e-05,
   "percentiles": {
-    "p5": 58278.66,
-    "p25": 62331.99,
-    "p50": 65247.12,
-    "p75": 68307.77,
-    "p95": 73353.78
+    "p5": 57688.68,
+    "p25": 61735.74,
+    "p50": 64523.16,
+    "p75": 67450.76,
+    "p95": 71976.53
   },
   "volume": {
-    "current_volume": 302.13,
+    "current_volume": 341.31,
     "avg_volume": 857.89,
-    "z_score": -1.58,
+    "z_score": -1.46,
     "is_spike": false
   },
   "liquidation_zones": [
     {
       "leverage": 10,
-      "long_liq": 57941.19,
-      "short_liq": 70817.01
+      "long_liq": 58062.6,
+      "short_liq": 70965.4
     },
     {
       "leverage": 25,
-      "long_liq": 61803.94,
-      "short_liq": 66954.26
+      "long_liq": 61933.44,
+      "short_liq": 67094.56
     },
     {
       "leverage": 50,
-      "long_liq": 63091.52,
-      "short_liq": 65666.68
+      "long_liq": 63223.72,
+      "short_liq": 65804.28
     },
     {
       "leverage": 100,
-      "long_liq": 63735.31,
-      "short_liq": 65022.89
+      "long_liq": 63868.86,
+      "short_liq": 65159.14
     }
   ],
   "futures": null,
-  "large_trades": [
-    {
-      "price": 64389.4,
-      "size": 0.04862521,
-      "side": "sell",
-      "time": 1787135451239000000,
-      "time_iso": "2026-08-19T10:30:51.239000+00:00"
-    },
-    {
-      "price": 64389.4,
-      "size": 0.03719779,
-      "side": "sell",
-      "time": 1787135451239000000,
-      "time_iso": "2026-08-19T10:30:51.239000+00:00"
-    },
-    {
-      "price": 64392.3,
-      "size": 0.029,
-      "side": "sell",
-      "time": 1787135445837000000,
-      "time_iso": "2026-08-19T10:30:45.837000+00:00"
-    }
-  ],
+  "large_trades": [],
   "news_events": [
     {
       "date": "2026-08-17T00:00:00",
