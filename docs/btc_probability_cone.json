@@ -1,49 +1,85 @@
 {
-  "updated_at": "2026-10-14T15:00:26.754540+00:00",
+  "updated_at": "2026-10-14T19:17:50.690650+00:00",
   "symbol": "BTC-USDT",
-  "last_price": 81945.0,
+  "last_price": 81797.7,
   "forecast_bars": 20,
-  "p_up_pct": 47.6,
+  "p_up_pct": 47.7,
   "regime_state": 1,
-  "garch_sigma": 0.0214,
-  "drift": -0.00032,
+  "garch_sigma": 0.02182,
+  "drift": -0.00028,
   "percentiles": {
-    "p5": 69492.88,
-    "p25": 76411.99,
-    "p50": 81487.39,
-    "p75": 86644.55,
-    "p95": 95282.67
+    "p5": 69469.57,
+    "p25": 76348.18,
+    "p50": 81327.99,
+    "p75": 86511.26,
+    "p95": 95215.14
   },
   "volume": {
-    "current_volume": 2017.94,
+    "current_volume": 2588.35,
     "avg_volume": 1940.98,
-    "z_score": 0.08,
+    "z_score": 0.67,
     "is_spike": false
   },
   "liquidation_zones": [
     {
       "leverage": 10,
-      "long_liq": 73750.5,
-      "short_liq": 90139.5
+      "long_liq": 73617.93,
+      "short_liq": 89977.47
     },
     {
       "leverage": 25,
-      "long_liq": 78667.2,
-      "short_liq": 85222.8
+      "long_liq": 78525.79,
+      "short_liq": 85069.61
     },
     {
       "leverage": 50,
-      "long_liq": 80306.1,
-      "short_liq": 83583.9
+      "long_liq": 80161.75,
+      "short_liq": 83433.65
     },
     {
       "leverage": 100,
-      "long_liq": 81125.55,
-      "short_liq": 82764.45
+      "long_liq": 80979.72,
+      "short_liq": 82615.68
     }
   ],
   "futures": null,
-  "large_trades": [],
+  "large_trades": [
+    {
+      "price": 81836.6,
+      "size": 0.05472851,
+      "side": "sell",
+      "time": 1792005458465000000,
+      "time_iso": "2026-10-14T19:17:38.465000+00:00"
+    },
+    {
+      "price": 81836.6,
+      "size": 0.02089127,
+      "side": "sell",
+      "time": 1792005458465000000,
+      "time_iso": "2026-10-14T19:17:38.465000+00:00"
+    },
+    {
+      "price": 81836.6,
+      "size": 0.019066,
+      "side": "sell",
+      "time": 1792005458467000000,
+      "time_iso": "2026-10-14T19:17:38.467000+00:00"
+    },
+    {
+      "price": 81838.7,
+      "size": 0.01491059,
+      "side": "sell",
+      "time": 1792005458460000000,
+      "time_iso": "2026-10-14T19:17:38.460000+00:00"
+    },
+    {
+      "price": 81803.7,
+      "size": 0.00611822,
+      "side": "sell",
+      "time": 1792005468379000000,
+      "time_iso": "2026-10-14T19:17:48.379000+00:00"
+    }
+  ],
   "news_events": [
     {
       "date": "2026-09-21T00:00:00",
