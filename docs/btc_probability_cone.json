@@ -1,49 +1,64 @@
 {
-  "updated_at": "2026-11-23T08:42:13.093796+00:00",
+  "updated_at": "2026-11-23T20:58:02.370378+00:00",
   "symbol": "BTC-USDT",
-  "last_price": 61489.7,
+  "last_price": 61253.5,
   "forecast_bars": 20,
-  "p_up_pct": 42.8,
+  "p_up_pct": 42.7,
   "regime_state": 0,
-  "garch_sigma": 0.022,
-  "drift": -0.00079,
+  "garch_sigma": 0.02167,
+  "drift": -0.00089,
   "percentiles": {
-    "p5": 51517.03,
-    "p25": 56731.41,
-    "p50": 60408.59,
-    "p75": 64343.46,
-    "p95": 70830.97
+    "p5": 51413.69,
+    "p25": 56599.09,
+    "p50": 60213.55,
+    "p75": 64126.18,
+    "p95": 70205.13
   },
   "volume": {
-    "current_volume": 810.26,
+    "current_volume": 2925.57,
     "avg_volume": 4944.83,
-    "z_score": -1.26,
+    "z_score": -0.62,
     "is_spike": false
   },
   "liquidation_zones": [
     {
       "leverage": 10,
-      "long_liq": 55340.73,
-      "short_liq": 67638.67
+      "long_liq": 55128.15,
+      "short_liq": 67378.85
     },
     {
       "leverage": 25,
-      "long_liq": 59030.11,
-      "short_liq": 63949.29
+      "long_liq": 58803.36,
+      "short_liq": 63703.64
     },
     {
       "leverage": 50,
-      "long_liq": 60259.91,
-      "short_liq": 62719.49
+      "long_liq": 60028.43,
+      "short_liq": 62478.57
     },
     {
       "leverage": 100,
-      "long_liq": 60874.8,
-      "short_liq": 62104.6
+      "long_liq": 60640.96,
+      "short_liq": 61866.04
     }
   ],
   "futures": null,
-  "large_trades": [],
+  "large_trades": [
+    {
+      "price": 61267.0,
+      "size": 0.16338956,
+      "side": "sell",
+      "time": 1795467479732000000,
+      "time_iso": "2026-11-23T20:57:59.732000+00:00"
+    },
+    {
+      "price": 61262.3,
+      "size": 0.01661196,
+      "side": "sell",
+      "time": 1795467477092000000,
+      "time_iso": "2026-11-23T20:57:57.092000+00:00"
+    }
+  ],
   "news_events": [
     {
       "date": "2026-11-05T00:00:00",
