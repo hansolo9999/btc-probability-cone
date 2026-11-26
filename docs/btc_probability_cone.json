@@ -1,69 +1,55 @@
 {
-  "updated_at": "2026-11-26T13:46:39.315212+00:00",
+  "updated_at": "2026-11-26T22:52:43.962390+00:00",
   "symbol": "BTC-USDT",
-  "last_price": 60907.0,
+  "last_price": 60658.8,
   "forecast_bars": 20,
-  "p_up_pct": 39.5,
+  "p_up_pct": 40.0,
   "regime_state": 1,
-  "garch_sigma": 0.02003,
-  "drift": -0.00103,
+  "garch_sigma": 0.01966,
+  "drift": -0.00104,
   "percentiles": {
-    "p5": 51469.33,
-    "p25": 56223.14,
-    "p50": 59618.75,
-    "p75": 63014.61,
-    "p95": 68673.71
+    "p5": 51581.97,
+    "p25": 56034.35,
+    "p50": 59353.0,
+    "p75": 62796.46,
+    "p95": 68346.22
   },
   "volume": {
-    "current_volume": 1064.26,
+    "current_volume": 1612.16,
     "avg_volume": 4976.42,
-    "z_score": -1.21,
+    "z_score": -1.04,
     "is_spike": false
   },
   "liquidation_zones": [
     {
       "leverage": 10,
-      "long_liq": 54816.3,
-      "short_liq": 66997.7
+      "long_liq": 54592.92,
+      "short_liq": 66724.68
     },
     {
       "leverage": 25,
-      "long_liq": 58470.72,
-      "short_liq": 63343.28
+      "long_liq": 58232.45,
+      "short_liq": 63085.15
     },
     {
       "leverage": 50,
-      "long_liq": 59688.86,
-      "short_liq": 62125.14
+      "long_liq": 59445.62,
+      "short_liq": 61871.98
     },
     {
       "leverage": 100,
-      "long_liq": 60297.93,
-      "short_liq": 61516.07
+      "long_liq": 60052.21,
+      "short_liq": 61265.39
     }
   ],
   "futures": null,
   "large_trades": [
     {
-      "price": 60909.5,
-      "size": 0.07018914,
+      "price": 60661.2,
+      "size": 0.0414629,
       "side": "sell",
-      "time": 1795700768101000000,
-      "time_iso": "2026-11-26T13:46:08.101000+00:00"
-    },
-    {
-      "price": 60908.1,
-      "size": 0.01,
-      "side": "sell",
-      "time": 1795700768103000000,
-      "time_iso": "2026-11-26T13:46:08.103000+00:00"
-    },
-    {
-      "price": 60907.0,
-      "size": 0.00365169,
-      "side": "buy",
-      "time": 1795700792415000000,
-      "time_iso": "2026-11-26T13:46:32.415000+00:00"
+      "time": 1795733507392000000,
+      "time_iso": "2026-11-26T22:51:47.392000+00:00"
     }
   ],
   "news_events": [
